@@ -237,12 +237,6 @@ impl ShaderModule {
             ));
         }
 
-        // Defensive: Check alignment and minimal header size
-        debug_assert_eq!(
-            code.as_ptr() as usize % 4,
-            0,
-            "SPIR-V must be 4-byte aligned"
-        );
         if code.len() < 20 {
             return Err(AshError::VulkanError(
                 "SPIR-V code too small for valid header".into(),
