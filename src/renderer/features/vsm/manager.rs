@@ -91,7 +91,7 @@ impl VsmManager {
         log::info!("Creating VSM manager with {frame_count} frames");
 
         // Create resources
-        let resources = unsafe {
+        let mut resources = unsafe {
             VsmResources::new(
                 Arc::clone(&device),
                 Arc::clone(&allocator),
@@ -101,6 +101,11 @@ impl VsmManager {
                 frame_count,
             )?
         };
+
+        // Register the page table and physical cache in the bindless manager for
+        // both sampled and storage access. The analysis/allocate/clear passes
+        // need the storage indices to write the page table and clear the cache.
+        resources.register_bindless(bindless_manager)?;
 
         // Create page manager
         let page_manager = PageManager::new(
@@ -154,7 +159,7 @@ impl VsmManager {
             physical_cache_storage_index: 0,
             request_ptr: 0,
             allocation_ptr: 0,
-            _pad3: 0,
+            page_claim_ptr: 0,
         };
 
         // Register with bindless manager
@@ -238,6 +243,16 @@ impl VsmManager {
         self.global_info.physical_cache_index = self.physical_memory_bindless_index;
         self.global_info.scene_depth_index = self.scene_depth_index;
 
+        // The analysis/allocate/clear passes read or write the page table and
+        // physical cache through their *storage* bindless indices, which are
+        // registered during init and carried on the resources.
+        if let Some(inner) = &self.inner {
+            self.global_info.page_table_storage_index =
+                inner.resources.page_table_storage_index;
+            self.global_info.physical_cache_storage_index =
+                inner.resources.physical_cache_storage_index;
+        }
+
         // Update VSM resources (upload to GPU)
         if let Some(inner) = &mut self.inner {
             let buffer_index = frame_index as usize % inner.resources.request_buffers.len();
@@ -250,8 +265,13 @@ impl VsmManager {
                 vk::BufferDeviceAddressInfo::default().buffer(inner.resources.allocation_buffer);
             let allocation_ptr = unsafe { self.device.get_buffer_device_address(&alloc_addr_info) };
 
+            let claim_addr_info =
+                vk::BufferDeviceAddressInfo::default().buffer(inner.resources.claim_buffers[buffer_index].buffer);
+            let claim_ptr = unsafe { self.device.get_buffer_device_address(&claim_addr_info) };
+
             self.global_info.request_ptr = request_ptr;
             self.global_info.allocation_ptr = allocation_ptr;
+            self.global_info.page_claim_ptr = claim_ptr;
 
             inner.resources.update_global_info(&self.global_info)?;
         }
@@ -385,6 +405,16 @@ impl VsmManager {
                 0,
             );
 
+            // Clear the per-page claim flags so this frame's analysis can
+            // re-claim pages (one request per distinct page).
+            self.device.cmd_fill_buffer(
+                cmd,
+                inner.resources.claim_buffers[buffer_index].buffer,
+                0,
+                inner.resources.claim_buffers[buffer_index].size_bytes,
+                0,
+            );
+
             let reset_barrier = vk::BufferMemoryBarrier2::default()
                 .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
                 .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
@@ -394,7 +424,16 @@ impl VsmManager {
                 .offset(0)
                 .size(8);
 
-            let buffer_barriers = [reset_barrier];
+            let claim_reset_barrier = vk::BufferMemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .dst_stage_mask(vk::PipelineStageFlags2::COMPUTE_SHADER)
+                .dst_access_mask(vk::AccessFlags2::SHADER_READ | vk::AccessFlags2::SHADER_WRITE)
+                .buffer(inner.resources.claim_buffers[buffer_index].buffer)
+                .offset(0)
+                .size(vk::WHOLE_SIZE);
+
+            let buffer_barriers = [reset_barrier, claim_reset_barrier];
             let dep_info = vk::DependencyInfo::default().buffer_memory_barriers(&buffer_barriers);
             self.device.cmd_pipeline_barrier2(cmd, &dep_info);
         }

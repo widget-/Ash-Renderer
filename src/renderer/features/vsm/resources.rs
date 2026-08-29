@@ -146,6 +146,12 @@ pub struct VsmResources {
     /// Request buffers (one per frame in flight to avoid CPU/GPU race)
     pub request_buffers: Vec<VsmRequestBuffer>,
 
+    /// Per-virtual-page "requested this frame" flag buffers (one per frame in
+    /// flight). Each is cleared before the analysis dispatch; the analysis
+    /// atomically claims a page and only the first claimer emits a request, so
+    /// requests are one per distinct page rather than per pixel.
+    pub claim_buffers: Vec<VsmRequestBuffer>,
+
     /// Physical depth buffer (D32_SFLOAT) for shadow rendering
     pub physical_depth_image: vk::Image,
     physical_depth_image_alloc: Option<vk_mem::Allocation>,
@@ -383,6 +389,35 @@ impl VsmResources {
             });
         }
 
+        // Create per-page claim buffers (one u32 per virtual page per layer).
+        let total_pages = config.virtual_page_count()
+            * config.clipmap_levels.max(1);
+        let claim_size = (total_pages as usize * std::mem::size_of::<u32>()) as vk::DeviceSize;
+        let mut claim_buffers = Vec::with_capacity(frames_in_flight as usize);
+        for _ in 0..frames_in_flight {
+            let (claim_handle, claim_alloc) = unsafe {
+                allocator.create_buffer_with_flags(
+                    claim_size,
+                    vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::TRANSFER_SRC
+                        | vk::BufferUsageFlags::TRANSFER_DST
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    vk_mem::MemoryUsage::AutoPreferHost,
+                    vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM,
+                )
+            }
+            .map_err(|e| {
+                AshError::VulkanError(format!("Failed to create page claim buffer: {e:?}"))
+            })?;
+
+            claim_buffers.push(VsmRequestBuffer {
+                buffer: claim_handle,
+                allocation: claim_alloc,
+                size_bytes: claim_size,
+                max_requests: total_pages,
+            });
+        }
+
         // Create allocation buffer (SSBO)
         // Usage: STORAGE_BUFFER | TRANSFER_DST (Write by CPU, Read by GPU)
         let alloc_size = (config.physical_page_count() as usize
@@ -525,6 +560,7 @@ impl VsmResources {
             page_table_view,
             page_table_sampler,
             request_buffers,
+            claim_buffers,
             allocation_buffer,
             allocation_buffer_alloc: Some(allocation_buffer_alloc),
             metadata_buffer,
@@ -667,6 +703,15 @@ impl VsmResources {
         }
 
         for rb in &mut self.request_buffers {
+            if rb.buffer != vk::Buffer::null() {
+                unsafe {
+                    self.allocator.destroy_buffer(rb.buffer, &mut rb.allocation);
+                }
+                rb.buffer = vk::Buffer::null();
+            }
+        }
+
+        for rb in &mut self.claim_buffers {
             if rb.buffer != vk::Buffer::null() {
                 unsafe {
                     self.allocator.destroy_buffer(rb.buffer, &mut rb.allocation);

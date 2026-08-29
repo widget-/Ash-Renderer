@@ -9,6 +9,13 @@
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(constant_id = 0) const uint MAX_REQUESTS = 1024;
 
+// One u32 "requested this frame" flag per virtual page. Cleared before the
+// analysis dispatch; the analysis claims a page atomically and only the first
+// claimer per page emits a request, deduping per-pixel requests to per-page.
+layout(buffer_reference, scalar, buffer_reference_align = 4) buffer PageClaimBuffer {
+    uint flags[];
+};
+
 void main() {
     ivec2 pixel_coord = ivec2(gl_GlobalInvocationID.xy);
     
@@ -56,8 +63,17 @@ void main() {
         uint page_entry = texelFetch(global_page_tables[nonuniformEXT(u_Global.page_table_index)], ivec3(page_x, page_y, layer), 0).r;
         
         if (page_entry != 0xFFFFFFFFu) return; // Already allocated and resident
-        
-        // 7. Request Page
+
+        // 7. Dedupe: claim the page so only the first pixel covering it emits a
+        // request. The claim buffer is a u32 flag per virtual page, cleared at
+        // the start of this frame.
+        uint psz = u_Global.page_table_size;
+        uint page_index = (layer * psz + page_y) * psz + page_x;
+        PageClaimBuffer claims = PageClaimBuffer(u_Global.page_claim_ptr);
+        uint first = atomicAdd(claims.flags[page_index], 1);
+        if (first != 0) return; // someone already claimed this page this frame
+
+        // 8. Request Page
         uint idx = atomicAdd(requests.count, 1);
         if (idx < MAX_REQUESTS) { 
             requests.data[idx].virtual_x = page_x;

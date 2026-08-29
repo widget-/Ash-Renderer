@@ -16,7 +16,9 @@ pub struct VsmGlobalInfo {
     pub physical_cache_storage_index: u32,
     pub request_ptr: u64,
     pub allocation_ptr: u64,
-    pub _pad3: u64,
+    /// Device address of a per-virtual-page "requested this frame" flag buffer.
+    /// Used to dedupe page requests (one per distinct page, not per pixel).
+    pub page_claim_ptr: u64,
 }
 
 #[repr(C)]

@@ -205,7 +205,7 @@ layout(buffer_reference, scalar, buffer_reference_align = 16) restrict readonly 
     uint physical_cache_storage_index;
     uint64_t request_ptr;
     uint64_t allocation_ptr;
-    uint64_t _pad3;
+    uint64_t page_claim_ptr;
 };
 
 uint load_index(uint64_t ptr, uint logical_index) {
