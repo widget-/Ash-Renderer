@@ -15,20 +15,9 @@ layout(location = 0) out vec2 outMoments;
 
 
 void main() {
-    // Alpha testing for transparent materials
-    if (push.material_ptr != 0) {
-        MaterialBuffer material_ctx = MaterialBuffer(push.material_ptr);
-        MaterialData mat = material_ctx.materials[push.material_index & 0xFFFFu];
-        
-        int base_color_idx = mat.texture_indices.x;
-        if (base_color_idx >= 0) {
-            float alpha = texture(global_textures[nonuniformEXT(base_color_idx)], inUV).a;
-            if (alpha * mat.base_color_factor.a < mat.alpha_cutoff) {
-                discard;
-            }
-        }
-    }
-    
+    // Note: no material alpha-testing here. ShadowPushBlock has no
+    // material_ptr/material_index/alpha_cutoff fields, so the old block that
+    // read push.material_ptr read out-of-range push constant bytes (garbage).
     float depth = gl_FragCoord.z;
     outMoments = vec2(depth, depth * depth);
 }
