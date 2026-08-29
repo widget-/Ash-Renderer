@@ -50,6 +50,7 @@ pub use sync::FrameSync;
 pub use transfer_context::TransferContext;
 
 #[inline]
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 pub fn set_debug_object_name<T: vk::Handle>(
     loader: Option<&ash::ext::debug_utils::Device>,
     handle: T,
