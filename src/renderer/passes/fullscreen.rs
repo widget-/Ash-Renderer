@@ -142,10 +142,10 @@ impl Drop for FullscreenPass {
 
 /// Push constants for post-processing shaders.
 ///
-/// Layout is `repr(C)` and kept at exactly 16 bytes for Vulkan
+/// Layout is `repr(C)` and kept at exactly 12 bytes for Vulkan
 /// push-constant alignment rules and `bytemuck::Pod` compliance.
 ///
-/// Byte map: `[exposure(4), bloom_intensity(4), tonemapper_type(4), gamma(4)]` → **16 bytes total**
+/// Byte map: `[exposure(4), bloom_intensity(4), tonemapper_type(4)]` → **12 bytes total**
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PostProcessPushConstants {
@@ -153,10 +153,8 @@ pub struct PostProcessPushConstants {
     pub exposure: f32,
     /// Bloom composite intensity (0.0 = bloom disabled).
     pub bloom_intensity: f32,
-    /// Which tonemapper to use.
+    /// Which tonemapper to use (0 = Linear, 1 = AgX).
     pub tonemapper_type: u32,
-    /// Target gamma for display calibration (e.g. 2.2).
-    pub gamma: f32,
 }
 
 impl Default for PostProcessPushConstants {
@@ -165,7 +163,6 @@ impl Default for PostProcessPushConstants {
             exposure: 1.0,
             bloom_intensity: 0.0,
             tonemapper_type: 1,
-            gamma: 2.2,
         }
     }
 }

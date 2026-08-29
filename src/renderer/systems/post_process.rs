@@ -17,7 +17,6 @@ use crate::renderer::frame::Frame;
 #[derive(Clone, Copy, Debug)]
 pub struct PostProcessConfig {
     pub exposure: f32,
-    pub gamma: f32,
     /// Tonemapper to use: 0 = Linear, 1 = AgX. Defaults to AgX.
     pub tonemapper_type: u32,
 }
@@ -26,7 +25,6 @@ impl Default for PostProcessConfig {
     fn default() -> Self {
         Self {
             exposure: 1.0,
-            gamma: 2.2,
             tonemapper_type: 1,
         }
     }
@@ -219,16 +217,6 @@ impl PostProcessSystem {
     pub fn exposure(&self) -> f32 {
         self.config.exposure
     }
-
-    /// Set the gamma value (clamped to `[1.0, 3.0]`).
-    pub fn set_gamma(&mut self, gamma: f32) {
-        self.config.gamma = gamma.clamp(1.0, 3.0);
-    }
-
-    /// Query the current gamma value.
-    pub fn gamma(&self) -> f32 {
-        self.config.gamma
-    }
 }
 
 /// Context for post-processing and upscaling.
@@ -413,7 +401,6 @@ impl PostProcessSystem {
                 exposure: self.config.exposure,
                 bloom_intensity: 0.0, // Forced zero to bypass Ghost Bloom (Phase 2)
                 tonemapper_type: self.config.tonemapper_type,
-                gamma: self.config.gamma,
             };
 
             self.device.cmd_push_constants(

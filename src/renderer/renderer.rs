@@ -1170,12 +1170,6 @@ impl Renderer {
         self.systems.post_process().exposure()
     }
 
-    /// Returns the tonemapping gamma value
-    #[inline]
-    pub fn tonemapping_gamma(&self) -> f32 {
-        self.systems.post_process().gamma()
-    }
-
     /// Enables or disables bloom
     #[inline]
     pub fn set_bloom_enabled(&mut self, enabled: bool) {
@@ -1324,8 +1318,8 @@ impl Renderer {
         Ok(())
     }
 
-    /// Returns post-processing settings as a tuple (exposure, gamma, bloom_intensity)
-    pub fn post_processing_settings(&self) -> (f32, f32, f32) {
+    /// Returns post-processing settings as a tuple (exposure, bloom_intensity)
+    pub fn post_processing_settings(&self) -> (f32, f32) {
         let bloom_intensity = if let Some(bloom) =
             self.systems
                 .features
@@ -1338,7 +1332,6 @@ impl Renderer {
 
         (
             self.systems.pipeline.post_process().config.exposure,
-            self.systems.pipeline.post_process().config.gamma,
             bloom_intensity,
         )
     }

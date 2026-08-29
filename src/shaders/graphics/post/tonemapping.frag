@@ -17,12 +17,11 @@ layout(set = 0, binding = 0) uniform sampler2D hdrBuffer;
 layout(set = 0, binding = 1) uniform sampler2D bloomBuffer;
 
 
-// Must match PostProcessPushConstants in fullscreen.rs exactly (16 bytes).
+// Must match PostProcessPushConstants in fullscreen.rs exactly (12 bytes).
 layout(push_constant) uniform PushConstants {
     float exposure;
     float bloom_intensity;
     uint  tonemapper_type;
-    float gamma; // Display calibration target.
 } pc;
 
 // =============================================================================
