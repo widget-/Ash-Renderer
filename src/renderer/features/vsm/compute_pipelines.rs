@@ -33,7 +33,8 @@ impl VsmComputePipelines {
         let clear_module = unsafe {
             device
                 .create_shader_module(
-                    &vk::ShaderModuleCreateInfo::default().code(bytemuck::cast_slice(clear_shader)),
+                    &vk::ShaderModuleCreateInfo::default()
+                        .code(&bytemuck::pod_collect_to_vec::<u8, u32>(clear_shader)),
                     None,
                 )
                 .map_err(|e| {
@@ -62,7 +63,7 @@ impl VsmComputePipelines {
             device
                 .create_shader_module(
                     &vk::ShaderModuleCreateInfo::default()
-                        .code(bytemuck::cast_slice(analyze_shader)),
+                        .code(&bytemuck::pod_collect_to_vec::<u8, u32>(analyze_shader)),
                     None,
                 )
                 .map_err(|e| {
@@ -101,7 +102,7 @@ impl VsmComputePipelines {
             device
                 .create_shader_module(
                     &vk::ShaderModuleCreateInfo::default()
-                        .code(bytemuck::cast_slice(allocate_shader)),
+                        .code(&bytemuck::pod_collect_to_vec::<u8, u32>(allocate_shader)),
                     None,
                 )
                 .map_err(|e| {

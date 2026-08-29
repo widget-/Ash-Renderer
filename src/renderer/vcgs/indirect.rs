@@ -216,8 +216,11 @@ impl IndirectDrawPass {
     /// All resources are addressed via BDA push constants — no descriptor bindings.
     unsafe fn create_pipeline(&mut self) -> Result<()> {
         let shader_code = include_bytes!(concat!(env!("OUT_DIR"), "/cull_instances.comp.spv"));
-        let shader_module_info =
-            vk::ShaderModuleCreateInfo::default().code(bytemuck::cast_slice(shader_code));
+        // include_bytes! is only 1-byte aligned; copy into a properly aligned Vec
+        // rather than cast_slice-ing straight to &[u32] (which is UB, and panics
+        // on bytemuck >= 1.24).
+        let shader_code = bytemuck::pod_collect_to_vec::<u8, u32>(shader_code);
+        let shader_module_info = vk::ShaderModuleCreateInfo::default().code(&shader_code);
         let shader_module = unsafe { self.device.create_shader_module(&shader_module_info, None) }?;
 
         let push_constant_range = vk::PushConstantRange::default()

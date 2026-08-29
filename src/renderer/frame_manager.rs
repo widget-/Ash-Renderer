@@ -94,6 +94,11 @@ impl FrameManager {
         Ok(())
     }
 
+    /// Semaphore signalled when the next swapchain image becomes available.
+    pub fn image_available_semaphore(&self) -> vk::Semaphore {
+        self.image_available_semaphores[self.current_frame]
+    }
+
     pub fn acquire_next_image(
         &self,
         swapchain_loader: &ash::khr::swapchain::Device,
@@ -161,6 +166,7 @@ impl FrameManager {
         swapchain_loader: &ash::khr::swapchain::Device,
         swapchain_khr: vk::SwapchainKHR,
         image_index: u32,
+        headless: bool,
     ) -> Result<bool> {
         let cmd = self.get_current_command_buffer();
         let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
@@ -168,11 +174,17 @@ impl FrameManager {
         let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
         let command_buffers = [cmd];
 
-        let submit_info = vk::SubmitInfo::default()
-            .wait_semaphores(&wait_semaphores)
-            .wait_dst_stage_mask(&wait_stages)
+        // Headless swapchains hand out an index without signalling the acquire
+        // semaphore (there is no presentation engine to acquire from), so waiting
+        // on it here would stall the queue forever.
+        let mut submit_info = vk::SubmitInfo::default()
             .command_buffers(&command_buffers)
             .signal_semaphores(&signal_semaphores);
+        if !headless {
+            submit_info = submit_info
+                .wait_semaphores(&wait_semaphores)
+                .wait_dst_stage_mask(&wait_stages);
+        }
 
         unsafe {
             device
@@ -186,6 +198,13 @@ impl FrameManager {
                     self.in_flight_fences[self.current_frame],
                 )
                 .map_err(|e| AshError::VulkanError(format!("Failed to submit queue: {e}")))?;
+
+            // VK_KHR_swapchain is not enabled on headless devices, so there is
+            // nothing to present to — the readback pass reads the image directly.
+            if headless {
+                self.current_frame = (self.current_frame + 1) % self.max_frames_in_flight;
+                return Ok(false);
+            }
 
             let swapchains = [swapchain_khr];
             let image_indices = [image_index];

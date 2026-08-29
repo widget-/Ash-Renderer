@@ -1,7 +1,5 @@
 use ash::{Entry, Instance, vk};
-#[cfg(target_os = "macos")]
-use raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::window::Window;
 
 use crate::{AshError, Result};
@@ -162,20 +160,39 @@ unsafe fn create_surface_impl(
 ) -> Result<vk::SurfaceKHR> {
     use ash::khr::{wayland_surface, xlib_surface};
 
-    match window.window_handle().map(|h| h.as_raw()) {
-        Ok(RawWindowHandle::Wayland(handle)) => {
+    // raw-window-handle 0.6 moved `display` off the window handle onto the
+    // display handle, so both have to be fetched to build a surface.
+    let raw_window = match window.window_handle() {
+        Ok(h) => h.as_raw(),
+        Err(_) => {
+            return Err(AshError::DeviceInitFailed(
+                "Invalid window handle".to_string(),
+            ));
+        }
+    };
+    let raw_display = match window.display_handle() {
+        Ok(h) => h.as_raw(),
+        Err(_) => {
+            return Err(AshError::DeviceInitFailed(
+                "Invalid display handle".to_string(),
+            ));
+        }
+    };
+
+    match (raw_window, raw_display) {
+        (RawWindowHandle::Wayland(handle), RawDisplayHandle::Wayland(display)) => {
             let wayland_surface_loader = wayland_surface::Instance::new(entry, instance);
             let create_info = vk::WaylandSurfaceCreateInfoKHR::default()
-                .display(handle.display.as_ptr())
+                .display(display.display.as_ptr())
                 .surface(handle.surface.as_ptr());
             unsafe { wayland_surface_loader.create_wayland_surface(&create_info, None) }
                 .map_err(|e| AshError::VulkanError(format!("{e:?}")))
         }
-        Ok(RawWindowHandle::Xlib(handle)) => {
+        (RawWindowHandle::Xlib(handle), RawDisplayHandle::Xlib(display)) => {
             let xlib_surface_loader = xlib_surface::Instance::new(entry, instance);
             let create_info = vk::XlibSurfaceCreateInfoKHR::default()
                 .dpy(
-                    handle
+                    display
                         .display
                         .map(|d| d.as_ptr())
                         .unwrap_or(std::ptr::null_mut()) as *mut _,
