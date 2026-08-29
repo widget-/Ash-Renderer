@@ -24,8 +24,9 @@ void main() {
     // 1. Sample Depth
     float depth = texture(global_textures[nonuniformEXT(u_Global.scene_depth_index)], uv).r;
     
-    // Skip skybox
-    if (depth >= 1.0) return; 
+    // Skip skybox. This renderer uses reverse-Z (near->1.0, far->0.0), so the
+    // background/cleared depth is near 0.0, not 1.0.
+    if (depth <= 0.001) return; 
 
     // 2. Reconstruct World Position
     vec4 clip_pos = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, depth, 1.0);

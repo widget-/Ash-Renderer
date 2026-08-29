@@ -112,7 +112,7 @@ impl SceneSynchronizer {
     pub fn prepare_frame(&self, info: FramePreparationInfo<'_>) -> Result<()> {
         let FramePreparationInfo {
             context,
-            frame: _frame,
+            frame,
             scene,
             systems,
             resources,
@@ -198,6 +198,13 @@ impl SceneSynchronizer {
         }
 
         // ── VSM shadow manager ─────────────────────────────────────────
+        // The analysis shader needs the bindless index of the scene depth
+        // texture to decide which shadow pages are visible. It is registered
+        // with the bindless manager during init and carried on the frame.
+        if let Some(gbi) = &frame.gbuffer_indices {
+            vsm_manager.scene_depth_index = gbi.depth_index;
+        }
+
         let light_dir = scene
             .directional_lights
             .first()

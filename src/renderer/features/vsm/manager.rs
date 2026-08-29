@@ -45,6 +45,10 @@ pub struct VsmManager {
     pub page_table_bindless_index: u32,
     pub physical_memory_bindless_index: u32,
 
+    /// Bindless index of the scene depth texture the analysis pass samples.
+    /// Set by the renderer each frame from the registered depth buffer.
+    pub scene_depth_index: u32,
+
     /// Current frame index
     current_frame: u32,
 
@@ -176,6 +180,7 @@ impl VsmManager {
             clipmap_manager,
             page_table_bindless_index,
             physical_memory_bindless_index,
+            scene_depth_index: 0,
             current_frame: 0,
             device,
             allocator,
@@ -230,6 +235,8 @@ impl VsmManager {
         self.global_info.camera_position = camera_pos.extend(1.0);
         self.global_info.light_dir = light_dir.extend(0.0);
         self.global_info.page_table_index = self.page_table_bindless_index;
+        self.global_info.physical_cache_index = self.physical_memory_bindless_index;
+        self.global_info.scene_depth_index = self.scene_depth_index;
 
         // Update VSM resources (upload to GPU)
         if let Some(inner) = &mut self.inner {
@@ -454,6 +461,24 @@ impl VsmManager {
             let image_barriers = [cache_to_general];
             let dep_info = vk::DependencyInfo::default().image_memory_barriers(&image_barriers);
             self.device.cmd_pipeline_barrier2(cmd, &dep_info);
+
+            // Make the host-written VsmGlobalInfo (request_ptr, scene_depth_index,
+            // matrices, etc.) visible to the analysis compute shader. The metadata
+            // buffer is written from the CPU in prepare(); without this barrier the
+            // shader can read stale zeros (request_ptr=0 -> the request buffer is
+            // never populated, and the readback returns garbage).
+            let metadata_barrier = vk::BufferMemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::HOST)
+                .src_access_mask(vk::AccessFlags2::HOST_WRITE)
+                .dst_stage_mask(vk::PipelineStageFlags2::COMPUTE_SHADER)
+                .dst_access_mask(vk::AccessFlags2::SHADER_READ)
+                .buffer(inner.resources.metadata_buffer)
+                .offset(0)
+                .size(vk::WHOLE_SIZE);
+            let md_barriers = [metadata_barrier];
+            let md_dep = vk::DependencyInfo::default().buffer_memory_barriers(&md_barriers);
+            self.device.cmd_pipeline_barrier2(cmd, &md_dep);
+
             let groups_x = screen_width.div_ceil(8);
             let groups_y = screen_height.div_ceil(8);
             self.device.cmd_dispatch(cmd, groups_x, groups_y, 1);

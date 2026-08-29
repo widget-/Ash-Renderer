@@ -143,6 +143,25 @@ impl PageManager {
         let mut allocations = Vec::new();
 
         for request in requests {
+            // Defensive: the request buffer is read back from GPU memory without
+            // guarantees on frames that have not yet had a completed analysis
+            // pass (e.g. the first max_frames_in_flight frames, or headless
+            // pacing differences). A write that never happened leaves the
+            // payload as garbage, which would index page_states out of bounds.
+            // Validate the coordinates and skip anything implausible.
+            let valid = request.virtual_x < self.virtual_pages_per_axis
+                && request.virtual_y < self.virtual_pages_per_axis
+                && request.layer < self._layer_count;
+            if !valid {
+                log::warn!(
+                    "VSM: ignoring invalid page request ({}, {}, L{})",
+                    request.virtual_x,
+                    request.virtual_y,
+                    request.layer
+                );
+                continue;
+            }
+
             let idx = self.virtual_page_index(request.virtual_x, request.virtual_y, request.layer);
 
             match self.page_states[idx] {

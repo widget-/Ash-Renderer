@@ -23,7 +23,15 @@ pub fn calculate_clipmap_view_proj(
     // We project the camera center into light space to find its coordinates.
     // But since eye = center - dir*radius, wait...
     // Let's use a fixed-point view to handle snapping properly across frames.
-    let base_view = Mat4::look_at_rh(-light_dir_norm * radius, Vec3::ZERO, Vec3::Y);
+    // Use an up vector that is not parallel to the light direction, otherwise
+    // look_at_rh produces a degenerate (NaN) basis. This happens for a
+    // straight-down light (dir == +/-Y).
+    let up = if light_dir_norm.dot(Vec3::Y).abs() > 0.999 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
+    let base_view = Mat4::look_at_rh(-light_dir_norm * radius, Vec3::ZERO, up);
     let light_space_center = base_view.transform_point3(camera_center);
 
     let snapped_x = (light_space_center.x / texel_size).floor() * texel_size;
