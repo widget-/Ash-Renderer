@@ -84,19 +84,27 @@ impl Frame {
         self.frame_manager.next_frame(&context.device.device)?;
 
         // 2. Acquire next swapchain image
-        let swapchain_loader = ash::khr::swapchain::Device::new(
-            context.device.instance.instance(),
-            &context.device.device,
-        );
-        let swapchain_khr = self
+        let swapchain = self
             .swapchain
             .as_ref()
-            .ok_or_else(|| AshError::VulkanError("Swapchain missing".to_string()))?
-            .swapchain;
+            .ok_or_else(|| AshError::VulkanError("Swapchain missing".to_string()))?;
 
-        let (image_index, is_suboptimal) = self
-            .frame_manager
-            .acquire_next_image(&swapchain_loader, swapchain_khr)?;
+        // Headless swapchains back onto plain images, and VK_KHR_swapchain is not
+        // even enabled on the device in that mode, so the loader cannot be used.
+        let (image_index, is_suboptimal) = if swapchain.is_headless() {
+            let semaphore = self.frame_manager.image_available_semaphore();
+            (
+                unsafe { swapchain.acquire_next_image(semaphore) }?,
+                false,
+            )
+        } else {
+            let swapchain_loader = ash::khr::swapchain::Device::new(
+                context.device.instance.instance(),
+                &context.device.device,
+            );
+            self.frame_manager
+                .acquire_next_image(&swapchain_loader, swapchain.swapchain)?
+        };
 
         // 3. Reset the primary command pool for this frame
         self.cmds
@@ -111,19 +119,20 @@ impl Frame {
             context.device.instance.instance(),
             &context.device.device,
         );
-        let swapchain_khr = self
+        let swapchain = self
             .swapchain
             .as_ref()
-            .ok_or_else(|| AshError::VulkanError("Swapchain missing".to_string()))?
-            .swapchain;
+            .ok_or_else(|| AshError::VulkanError("Swapchain missing".to_string()))?;
+        let headless = swapchain.is_headless();
 
         self.frame_manager.submit_and_present(
             &context.device.device,
             context.queue.graphics_queue,
             context.queue.present_queue,
             &swapchain_loader,
-            swapchain_khr,
+            swapchain.swapchain,
             image_index,
+            headless,
         )
     }
 }
