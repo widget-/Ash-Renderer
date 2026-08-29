@@ -765,6 +765,14 @@ impl VsmManager {
                 self.current_frame, frame_index
             )));
         }
+        // Use the SAME light view-projection that the analysis pass and the
+        // forward shader's SampleVSM use (VsmGlobal.light_view_projections[0],
+        // the clipmap matrix). The caller passed a different fixed ortho, which
+        // made pages allocated by the clipmap projection get rendered with a
+        // mismatched projection, so the sampler looked up the wrong physical
+        // page and no shadow appeared.
+        let mut args = args;
+        args.light_view_proj = self.global_info.light_view_projections[0];
         let pages = self.page_manager.get_pages_to_render(args.light_view_proj);
         if pages.is_empty() {
             return Ok(());
