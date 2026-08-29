@@ -18,6 +18,8 @@ use crate::renderer::frame::Frame;
 pub struct PostProcessConfig {
     pub exposure: f32,
     pub gamma: f32,
+    /// Tonemapper to use: 0 = Linear, 1 = AgX. Defaults to AgX.
+    pub tonemapper_type: u32,
 }
 
 impl Default for PostProcessConfig {
@@ -25,6 +27,7 @@ impl Default for PostProcessConfig {
         Self {
             exposure: 1.0,
             gamma: 2.2,
+            tonemapper_type: 1,
         }
     }
 }
@@ -409,7 +412,7 @@ impl PostProcessSystem {
             let push_constants = PostProcessPushConstants {
                 exposure: self.config.exposure,
                 bloom_intensity: 0.0, // Forced zero to bypass Ghost Bloom (Phase 2)
-                tonemapper_type: 0,   // Linear (Bypass AgX desaturation)
+                tonemapper_type: self.config.tonemapper_type,
                 gamma: self.config.gamma,
             };
 
