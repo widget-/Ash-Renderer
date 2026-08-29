@@ -174,11 +174,17 @@ impl FrameManager {
         let signal_semaphores = [self.render_finished_semaphores[self.current_frame]];
         let command_buffers = [cmd];
 
-        let submit_info = vk::SubmitInfo::default()
-            .wait_semaphores(&wait_semaphores)
-            .wait_dst_stage_mask(&wait_stages)
+        // Headless swapchains hand out an index without signalling the acquire
+        // semaphore (there is no presentation engine to acquire from), so waiting
+        // on it here would stall the queue forever.
+        let mut submit_info = vk::SubmitInfo::default()
             .command_buffers(&command_buffers)
             .signal_semaphores(&signal_semaphores);
+        if !headless {
+            submit_info = submit_info
+                .wait_semaphores(&wait_semaphores)
+                .wait_dst_stage_mask(&wait_stages);
+        }
 
         unsafe {
             device
